@@ -7,7 +7,7 @@ schedules that run once and on time across daylight-saving changes (EcoTime Mast
 database `ecotime_db` (PostgreSQL 18), role `ecotime_user` · systemd `ecotime-collector.timer`
 
 ## What version 1 does
-- **Clock health, measured not assumed (T5, §9):** a read-only collector (`nobody`, systemd timer, every 30 s) reads
+- **Clock health, measured not assumed (T5, §9):** a read-only collector (own system user `ecotime-collector`, systemd timer, every 30 s) reads
   systemd-timesyncd and writes `/var/lib/ecotime-collector/clock-state.json`. EcoTime reports `synchronized`,
   `degraded`, `unsynchronized`, `stale` or `unknown` with the reason, offset, root distance, source and age. Clock steps
   are detected from wall-clock versus monotonic progress. EcoTime never sets the clock (T6).

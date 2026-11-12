@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// EcoTime clock-health collector (§9.5). Read-only and unprivileged: runs as `nobody` from a systemd timer, reads
+// EcoTime clock-health collector (§9.5). Read-only and unprivileged: runs as the `ecotime-collector` system user from a systemd timer, reads
 // systemd-timesyncd through timedatectl, and writes one JSON state file atomically. It never changes the clock (T6)
 // and needs no node_modules. A clock step is detected by comparing wall-clock and monotonic (uptime) progress (T4).
 //   node scripts/collect-clock.js [state-file]      default: $STATE_DIRECTORY/clock-state.json
