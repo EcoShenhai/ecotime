@@ -1,0 +1,26 @@
+{
+  "name": "@ecotime/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:registry": "node scripts/sync-registry.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/i18n-check.mjs && tsc --noEmit && vite build",
+    "test": "node scripts/i18n-check.mjs",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}

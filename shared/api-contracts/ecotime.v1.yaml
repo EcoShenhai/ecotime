@@ -1,0 +1,120 @@
+openapi: 3.1.0
+info:
+  title: Shenhai EcoTime API
+  version: 1.0.0
+  description: |
+    Trusted time, IANA time-zone conversion and durable schedules for Shenhai B2X apps.
+    Every response carries `X-EcoTime-Server-Time` and `X-EcoTime-Clock-Status`. Errors are
+    `{ "error": { "code", "message", "requestId" } }`. Apps authenticate with an `etk_` API key
+    (Bearer) scoped to one organization; people with an EcoTime session opened from EcoID.
+servers: [{ url: https://time.eshcloud.com/api/v1 }]
+security: [{ bearer: [] }]
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: "etk_… API key, or an EcoTime access token" }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string, pattern: "^[A-Za-z0-9._:-]{8,100}$" },
+      description: "Same key + same body replays the first result; same key + different body is 409 IDEMPOTENCY_MISMATCH." }
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: object, properties: { code: { type: string, examples: [INVALID_TIME_ZONE, INVALID_RECURRENCE, IDEMPOTENCY_MISMATCH, VERSION_CONFLICT, LIMIT_EXCEEDED, NOT_FOUND, SCOPE_MISSING] }, message: { type: string }, requestId: { type: string } } } }
+    ClockHealth:
+      type: object
+      required: [status]
+      properties:
+        status: { enum: [synchronized, degraded, unsynchronized, stale, unknown] }
+        reason: { type: [string, "null"] }
+        offsetMs: { type: [number, "null"] }
+        rootDistanceMs: { type: [number, "null"] }
+        stratum: { type: [integer, "null"] }
+        server: { type: [string, "null"] }
+        lastCheckedAt: { type: [string, "null"], format: date-time }
+        observationAgeSeconds: { type: [integer, "null"] }
+        daemon: { type: [string, "null"] }
+        diversity: { enum: [single_source, multiple] }
+    Rulesets: { type: object, properties: { runtime: { type: string }, os: { type: [string, "null"] }, agree: { type: [boolean, "null"] } } }
+    Zone: { type: string, description: "IANA zone name such as Africa/Nairobi. Fixed offsets (+03:00) are refused.", examples: [Africa/Nairobi] }
+    Intent:
+      type: object
+      required: [name, scheduleType, timeZone, startDate, localTime]
+      properties:
+        name: { type: string, maxLength: 160 }
+        scheduleType: { enum: [once, recurring] }
+        timeZone: { $ref: "#/components/schemas/Zone" }
+        startDate: { type: string, format: date }
+        localTime: { type: string, pattern: "^\\d{2}:\\d{2}$" }
+        recurrenceRule: { type: [string, "null"], description: "RFC 5545 RRULE body (FREQ=WEEKLY;BYDAY=MO). Evaluated as local wall time in timeZone." }
+        dstGapPolicy: { enum: [shift_forward, skip], default: shift_forward }
+        dstOverlapPolicy: { enum: [first, second], default: first }
+    Occurrence: { type: object, properties: { local: { type: string }, instant: { type: string, format: date-time }, resolution: { enum: [unique, ambiguous, nonexistent] }, skipped: { type: boolean } } }
+    Schedule:
+      allOf:
+        - $ref: "#/components/schemas/Intent"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            organizationId: { type: string, format: uuid }
+            actionType: { enum: [record, webhook, email] }
+            webhookEndpointId: { type: [string, "null"], format: uuid }
+            emailTo: { type: [string, "null"] }
+            payload: { type: object }
+            nextRunAt: { type: [string, "null"], format: date-time }
+            status: { enum: [active, paused, completed, failed, disabled] }
+            version: { type: integer }
+            rulesetVersion: { type: string }
+            upcoming: { type: array, items: { $ref: "#/components/schemas/Occurrence" } }
+    Execution: { type: object, properties: { id: { type: string }, scheduledFor: { type: string, format: date-time }, status: { enum: [running, succeeded, retrying, failed] }, attempt: { type: integer }, latenessMs: { type: integer }, resultCode: { type: string } } }
+paths:
+  /time/now:
+    get: { summary: Server time with measured clock health, description: "Scope time:read.", responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { timestamp: { type: string, format: date-time }, timeZone: { const: UTC }, clockHealth: { $ref: "#/components/schemas/ClockHealth" }, requestId: { type: string } } } } } } } }
+  /time/health:
+    get: { summary: Clock health and tz rule versions, responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { clockHealth: { $ref: "#/components/schemas/ClockHealth" }, rulesets: { $ref: "#/components/schemas/Rulesets" } } } } } } } }
+  /time/convert:
+    post:
+      summary: Instant → zone, or local wall time → instant(s)
+      description: "Scope time:convert. A nonexistent local time (spring forward) and an ambiguous one (fall back) are reported with the policy applied."
+      requestBody: { required: true, content: { application/json: { schema: { oneOf: [
+        { type: object, required: [instant, timeZone], properties: { instant: { type: string, format: date-time }, timeZone: { $ref: "#/components/schemas/Zone" } } },
+        { type: object, required: [localDateTime, timeZone], properties: { localDateTime: { type: string, examples: ["2027-03-14T02:30:00"] }, timeZone: { $ref: "#/components/schemas/Zone" }, dstGapPolicy: { enum: [shift_forward, skip] }, dstOverlapPolicy: { enum: [first, second] } } } ] } } } }
+      responses: { "200": { description: "instant form: {instant, timeZone, localDateTime, utcOffset, abbreviation, isDst, rulesetVersion}; local form: {resolution, policyApplied, instants[], candidates[]?, rulesetVersion}" }, "400": { description: INVALID_TIME_ZONE / INVALID_INPUT, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } } }
+  /time-zones:
+    get: { summary: All IANA zones with current offsets, responses: { "200": { description: OK } } }
+  /time-zones/version:
+    get: { summary: Runtime and OS tz rule versions, responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Rulesets" } } } } } }
+  /time-zones/{area}/{location}:
+    get:
+      summary: One zone (up to three segments, e.g. America/Argentina/Buenos_Aires)
+      parameters: [{ name: area, in: path, required: true, schema: { type: string } }, { name: location, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: "{id, currentOffset, abbreviation, observesDst, nextTransitions[{at, fromOffset, toOffset}], rulesetVersion}" }, "400": { description: INVALID_TIME_ZONE } }
+  /territories:
+    get: { summary: Territories with their IANA zones, responses: { "200": { description: OK } } }
+  /schedules/preview:
+    post: { summary: Next occurrences of an intent (nothing stored), description: "Scope schedules:read.", requestBody: { content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Intent" }, { type: object, properties: { count: { type: integer, maximum: 50 } } }] } } } }, responses: { "200": { description: "{timeZone, dstGapPolicy, dstOverlapPolicy, rulesetVersion, occurrences[]}" }, "400": { description: INVALID_RECURRENCE / INVALID_TIME_ZONE } } }
+  /schedules:
+    get: { summary: Schedules of the caller's organizations, parameters: [{ name: status, in: query, schema: { enum: [active, paused, completed, failed] } }], responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Schedule" } } } } } } }
+    post:
+      summary: Create a schedule
+      description: "Scope schedules:write. Webhook endpoints must belong to the same organization. 201 on create, 200 with replayed=true on an idempotent replay."
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Intent" }, { type: object, required: [actionType], properties: { actionType: { enum: [record, webhook, email] }, webhookEndpointId: { type: string, format: uuid }, emailTo: { type: string, format: email }, payload: { type: object, description: "≤ 8 KB" } } }] } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Schedule" } } } }, "409": { description: IDEMPOTENCY_MISMATCH }, "422": { description: LIMIT_EXCEEDED } }
+  /schedules/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { summary: One schedule with its next runs, responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Schedule" } } } }, "404": { description: NOT_FOUND (also for other organizations' schedules) } } }
+    patch: { summary: "Edit, pause (status=paused) or resume (status=active); pass version for optimistic locking", responses: { "200": { description: OK }, "409": { description: VERSION_CONFLICT } } }
+    delete: { summary: Cancel (it never runs again), responses: { "200": { description: OK } } }
+  /schedules/{id}/executions:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { summary: Run history, responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Execution" } } } } } } }
+  /webhooks:
+    get: { summary: Webhook endpoints of the caller's organizations (no secrets), responses: { "200": { description: OK } } }
+x-webhook-delivery:
+  description: |
+    POST to the endpoint URL (HTTPS, approved domains) with JSON {event: SCHEDULE_DUE, scheduleId, organizationId, name, scheduledFor, …, payload} and headers:
+      X-EcoTime-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>
+      X-EcoTime-Idempotency-Key: sha256(scheduleId|scheduledFor) — the same on every retry of one occurrence
+      X-EcoTime-Scheduled-For: ISO instant
+    A 2xx response succeeds. Otherwise EcoTime retries with backoff 30 s · 2^(n−1), up to SCHEDULER_MAX_ATTEMPTS, then
+    records the occurrence as failed and moves to the next one. Receivers should de-duplicate on the idempotency key.

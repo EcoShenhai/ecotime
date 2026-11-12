@@ -1,0 +1,39 @@
+# EcoTime clock-health collector (§9.5). Reads systemd-timesyncd, writes /var/lib/ecotime-collector/clock-state.json.
+# Read-only and unprivileged: it never changes the clock. Started every 30 s by ecotime-collector.timer.
+[Unit]
+Description=EcoTime clock-health collector
+After=systemd-timesyncd.service
+Wants=systemd-timesyncd.service
+
+[Service]
+Type=oneshot
+User=nobody
+Group=nogroup
+StateDirectory=ecotime-collector
+StateDirectoryMode=0755
+UMask=0022
+ExecStart=/usr/bin/node /srv/apps/ecotime/backend/scripts/collect-clock.js
+TimeoutStartSec=20
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@clock @privileged

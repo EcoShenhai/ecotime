@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the EcoTime clock-health collector every 30 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Unit=ecotime-collector.service
+
+[Install]
+WantedBy=timers.target

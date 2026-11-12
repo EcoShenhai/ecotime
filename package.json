@@ -1,0 +1,10 @@
+{
+  "name": "shenhai-ecotime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shenhai B2X EcoTime: time resilience and temporal coordination (zones, durable schedules, honest clock health)",
+  "workspaces": ["backend", "frontend"],
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "npm run test --workspaces --if-present" },
+  "overrides": { "uuid": "^11.1.1" }
+}
